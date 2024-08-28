@@ -1,0 +1,21 @@
+## Get the latest raw tables from DB when the tech pack uses time based raw partitions
+##
+## template parameters:
+## RAW_TYPE : the raw table type, eg DC_Z_ALARM_INFO_RAW
+## eromsza 13/08/2012
+
+SELECT
+    TABLENAME
+FROM
+    dwhrep.DWHPartition AS tmp
+WHERE
+    TABLENAME LIKE '${RAW_TYPE}%'
+AND ENDTIME =
+    (
+        SELECT
+            MAX(ENDTIME)
+        FROM
+            dwhrep.DWHPartition
+        WHERE
+            TABLENAME LIKE '${RAW_TYPE}%'
+    )

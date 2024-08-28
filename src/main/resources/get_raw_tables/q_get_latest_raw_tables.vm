@@ -1,0 +1,38 @@
+## Get the latest raw tables from DB
+##
+## template parameters:
+## RAW_TIMERANGE_VIEW : the timerange view to query eg EVENT_E_SGEH_ERR_RAW_TIMERANGE
+## selectLatestERRAndSUCTables : this is set to true for timerange views that span both ERR and SUC tables ie 
+##								 EVENT_E_SGEH_RAW_TIMERANGE or EVENT_E_LTE_RAW_TIMERANGE.  If the query is for one of
+##								 these views, and is for the latest tables, this query should return both the latest ERR 
+##								 and SUC tables, not just the latest table
+
+SELECT TABLENAME FROM
+	$RAW_TIMERANGE_VIEW
+	WHERE	
+	#if(${selectBothLatestERRAndSUCTables})
+		MAX_DATE = (
+			SELECT 
+				max(MAX_DATE)
+			from 
+				$RAW_TIMERANGE_VIEW	
+			where
+                TABLENAME like '%_SUC_RAW%'
+		)
+		or MAX_DATE = (
+			SELECT 
+				max(MAX_DATE)
+			from 
+				$RAW_TIMERANGE_VIEW
+            where 
+                TABLENAME like '%_ERR_RAW%'
+        )
+	#else
+		MAX_DATE = (
+			SELECT 
+				max(MAX_DATE)
+			from 
+				$RAW_TIMERANGE_VIEW		
+				)			
+    #end
+		

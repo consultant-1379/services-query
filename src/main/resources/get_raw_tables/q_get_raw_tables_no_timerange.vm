@@ -1,0 +1,16 @@
+## Get raw tables from DB for the specified time range when the tech pack uses time based raw partitions
+##
+## template parameters:
+## RAW_TYPE : the raw table type, eg DC_Z_ALARM_INFO_RAW
+## dateFrom :
+## dateTo :
+## eromsza 13/08/2012
+
+SELECT
+    TABLENAME
+FROM
+    dwhrep.DWHPartition
+WHERE
+    TABLENAME LIKE '${RAW_TYPE}%'
+AND STARTTIME > :dateFrom
+AND ENDTIME <= :dateTo

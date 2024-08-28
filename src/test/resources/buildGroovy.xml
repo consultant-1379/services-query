@@ -1,0 +1,41 @@
+<project name="groovy" default="compile">
+
+	<path id="test.class.path">
+		<path path="${test-classpath}" />
+	</path>
+	<path id="groovy.sources">
+		<path path="${project-build-directory}/generated-sources/groovy" />
+	</path>
+	<path id="velocity.sources">
+		<path path="${velocity-sources}" />
+	</path>
+	
+	<path id="velocity.generated.sources">
+		<path path="${project-build-directory}/generated-sources/velocity" />
+	</path>
+
+	<mkdir dir="${project-build-directory}/generated-sources" />
+	<mkdir dir="${project-build-directory}/generated-sources/groovy" />
+	<mkdir dir="${project-build-directory}/generated-sources/velocity" />
+
+	<taskdef name="groovy-generator" classname="com.ericsson.eniq.events.server.groovy.ant.GroovySourcecodeGeneratorAntTask" classpathref="test.class.path" />
+	<taskdef name="velocity-cleaner" classname="com.ericsson.eniq.events.server.groovy.ant.VelocityTemplateCleanerAntTask" classpathref="test.class.path" />
+	<taskdef name="groovyc" classpathref="test.class.path" classname="org.codehaus.groovy.ant.Groovyc" />
+
+	<target name="clean-velocity">
+		<velocity-cleaner targetDir="${project-build-directory}/generated-sources/velocity" srcRefId="velocity.sources" />
+	</target>
+	
+	<target name="generate-sources" depends="clean-velocity">
+		<groovy-generator targetDir="${project-build-directory}/generated-sources/groovy" srcRefId="velocity.generated.sources" />
+	</target>
+
+	<target name="compile" depends="generate-sources">
+		<groovyc destdir="${project-build-directory}/classes" listfiles="true">
+			<src refid="groovy.sources" />
+			<classpath refid="test.class.path" />
+		</groovyc>
+	</target>
+	<target name="skip"/>
+
+</project>

@@ -1,0 +1,32 @@
+<project name="project" default="instrument">
+
+	<path id="test.class.path">
+		<path path="${test-classpath}" />
+	</path>
+	<path id="velocity.path">
+		<fileset dir="${project-build-directory}/classes">
+			<include name="**/*.class" />
+		</fileset>
+	</path>
+
+	<taskdef classpathref="test.class.path" resource="tasks.properties" />
+
+	<target name="instrument">
+		<cobertura-instrument todir="${project-build-directory}/classes" datafile="${project-build-directory}/cobertura/cobertura.ser">
+			<fileset dir="${project-build-directory}/classes">
+			     <include name="**/*.class" />
+			     <exclude name="**/*Test.class" />
+			     <exclude name="**/com/ericsson/eniq/events/server/**/*.class" />
+			     <exclude name="**/GroovyScriptRunnerImpl.class" />
+			</fileset>
+		</cobertura-instrument>
+	</target>
+	
+	<target name="report">
+		<cobertura-report format="html" datafile="${project-build-directory}/cobertura/cobertura.ser" 
+			destDir="${project-build-directory}/cobertura/site" encoding="UTF-8" 
+			srcDir="${project-build-directory}/generated-sources/velocity"/>
+	</target>
+	
+	<target name="skip"/>
+</project>

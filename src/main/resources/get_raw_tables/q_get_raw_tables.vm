@@ -1,0 +1,17 @@
+## Get raw tables from DB for the specified time range
+##
+## template parameters:
+## RAW_TIMERANGE_VIEW : the timerange view to query eg EVENT_E_SGEH_ERR_RAW_TIMERANGE
+## dateFrom : 
+## dateTo : 
+## ehaoswa 13/10/2010
+
+
+SELECT TABLENAME FROM
+	dc.$RAW_TIMERANGE_VIEW
+WHERE	
+	MAX_DATE > :dateFrom and MIN_DATE <= :dateTo				
+
+
+
+

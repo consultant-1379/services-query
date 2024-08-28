@@ -1,0 +1,190 @@
+##=============================================================================
+##
+## Event analysis: detailed events data
+## -----------------------------------
+##
+## List events for subscriber, network etc
+##
+## type : one of {IMSI, SGSN, BSC, CELL, APN, TAC}
+## 
+## useTACExclusion : true if the query should exclude TACs in the EXCLUSIVE_TAC group
+##
+##  if groupname is set then the type that's set is used as the group type
+##         IMSI: search by GROUP_NAME from IMSI GROUP table
+##         APN: search by GROUP_NAME from APN GROUP
+##         TAC: search by GROUP_NAME from TAC group
+##
+##
+## key : one of {SUC, ERR, TOTAL}
+##
+## NOTE: For subscriber session management, All the TACs will be considered. i.e, no blacklist TACs here
+##
+##=============================================================================
+
+#DEFINE_CONSTANTS()
+#SET_GROUP_TYPE($type)
+
+#set($useNonLteTables=true)
+#set($useLteTables=true)
+#set($lteTableList=$TECH_PACK_LIST.getTechPack($ApplicationConstants.EVENT_E_LTE_TPNAME).getRawErrTables())
+#set($sgehTableList=$TECH_PACK_LIST.getTechPack($ApplicationConstants.EVENT_E_SGEH_TPNAME).getRawErrTables())
+
+#if(${type}==$TYPE_IMSI)
+    #set($columns=[$IMSI])
+    #set($lteTableList=$TECH_PACK_LIST.getTechPack($ApplicationConstants.EVENT_E_LTE_TPNAME).getRawTables())
+    #set($sgehTableList=$TECH_PACK_LIST.getTechPack($ApplicationConstants.EVENT_E_SGEH_TPNAME).getRawTables())
+#elseif(${type}==$TYPE_SGSN)
+    #set($columns=[$SGSN])
+#elseif(${type}==$TYPE_BSC)
+    #set($useLteTables=true)
+    #set($columns=[$RAT,$VENDOR,$BSC])
+#elseif(${type}==$TYPE_CELL)
+    #set($columns=[$RAT,$VENDOR,$BSC,$CELL])
+    #if(${RAT_VALUE}=="2")
+        #set($useNonLteTables=false)
+    #else
+        #set($useLteTables=true)
+    #end
+#elseif(${type}==$TYPE_APN)
+    #set($columns=[$APN])
+#elseif(${type}==$TYPE_TAC)
+    #set($columns=[$TAC])
+#elseif(${type}==$TYPE_PTMSI)
+    #set($columns=[$PTMSI])
+##PTMSI is not valid in 4G network - verified by Vasco (systems)
+    #set($useLteTables=false)
+#end
+
+#if(${groupDefinitions})
+    #set($groupDef = $groupDefinitions.get($groupType))
+    #set($groupTable = $groupDef.getTableName())
+    #set($groupnameColumn = $groupDef.getGroupNameColumn())
+    #set($joinKeys = $groupDef.getGroupKeys())
+    #set($isgroup=true)
+#else
+    #set($isgroup=false)
+#end
+
+#set($datavolcolumnsToSelect=["EVENT_TIME","convert(numeric(16,3), convert(numeric(16,2), DATAVOL_UL)/1024)","convert(numeric(16,3), convert(numeric(16,2), DATAVOL_DL)/1024)","convert(numeric(16,3), (convert(numeric(16,2), DATAVOL_UL)/1024/convert(numeric(16,2), QOS_MEAN_DATAVOL))*100)","convert(numeric(16,3), (convert(numeric(16,2), DATAVOL_DL)/1024/convert(numeric(16,2), QOS_MEAN_DATAVOL))*100)","convert(numeric(16,3), (convert(numeric(16,2), PEAK_USAGE_UL)/1024/convert(numeric(16,2), QOS_MEAN_DATAVOL))*100)","convert(numeric(16,3), (convert(numeric(16,2), PEAK_USAGE_DL)/1024/convert(numeric(16,2), QOS_MEAN_DATAVOL))*100)", "QOS_HOP_UP", "QOS_HOP_DOWN","DURATION","CHARGING_ID"])
+#set($datavolcolumnsToSelectWithIMSI=["IMSI","EVENT_TIME","convert(numeric(16,3), convert(numeric(16,2), DATAVOL_UL)/1024)","convert(numeric(16,3), convert(numeric(16,2), DATAVOL_DL)/1024)","convert(numeric(16,3), (convert(numeric(16,2), DATAVOL_UL)/1024/convert(numeric(16,2), QOS_MEAN_DATAVOL))*100)","convert(numeric(16,3), (convert(numeric(16,2), DATAVOL_DL)/1024/convert(numeric(16,2), QOS_MEAN_DATAVOL))*100)","convert(numeric(16,3), (convert(numeric(16,2), PEAK_USAGE_UL)/1024/convert(numeric(16,2), QOS_MEAN_DATAVOL))*100)","convert(numeric(16,3), (convert(numeric(16,2), PEAK_USAGE_DL)/1024/convert(numeric(16,2), QOS_MEAN_DATAVOL))*100)", "QOS_HOP_UP", "QOS_HOP_DOWN","DURATION","CHARGING_ID"])
+#set($deactivateEventID = "4")
+#macro(RAWVIEW_QUERY_FOR_EVENT_ANALYSIS $tablesToUseInQuery)
+##new function to be used to replace raw view with raw tables
+    ,(
+    #foreach ($rawtable in $tablesToUseInQuery)
+    select
+    *
+    from dc.$rawtable where
+    ##this if...else..block only apply to this template
+                ##for other templates, it should be different
+            #if($isgroup==false&&(${type} != $ApplicationConstants.TYPE_MAN&&${type} != $TYPE_MSISDN))
+        #GET_COLUMNS_WHERE_BY_TABLE($rawtable $columns)
+        #AND_DATETIME_RANGE()
+    #else
+        #GET_DATETIME_RANGE()
+    #end
+
+        #if($useTACExclusion)
+        ##only exclude TACs if the group is NOT the EXCLUSIVE_TAC group
+                        ## and an actual TAC is NOT explicitly requested
+                and #GET_TAC_EXCLUSION()
+        #end
+        #if($velocityCount < $tablesToUseInQuery.size())
+        union all
+        #end
+    #end
+) as rawview
+#end
+
+#macro (WHERE_ADDON_FOR_EVENT_ANALYSIS)
+    #if(((!$eventID) && ("$!eventID" == ""))||($isgroup==false&&$type==$TYPE_IMSI))
+    and rawview.EVENT_ID is not null
+    #else
+    and rawview.EVENT_ID #FORMAT_EVENT_IDS_FOR_IN($eventID)
+    #end
+    #if($isgroup)
+    and #GET_JOIN("rawview" "groupref" $joinKeys)
+    and $groupnameColumn = :$ApplicationConstants.GROUP_NAME_PARAM
+    #elseif(${type} == $TYPE_MSISDN)
+    and #GET_JOIN("rawview" "imsiMap" ["IMSI"])
+    and imsiMap.MSISDN = :$ApplicationConstants.MSISDN_PARAM.toUpperCase()
+    #elseif (${type} == $ApplicationConstants.TYPE_MAN)
+    and tacref.MANUFACTURER = :$ApplicationConstants.TYPE_MAN
+    #end
+
+#end
+
+#macro(EVENT_ANALYSIS_QUERY $networkType $tablesToUseInQuery)
+(
+    #EVENT_ANALYSIS_SELECT($isgroup $type $networkType)
+
+    #EVENT_ANALYSIS_FROM($isgroup $networkType $groupTable)
+    #RAWVIEW_QUERY_FOR_EVENT_ANALYSIS($tablesToUseInQuery)
+
+    #EVENT_ANALYSIS_WHERE($type $networkType)
+    #WHERE_ADDON_FOR_EVENT_ANALYSIS()
+)
+#end
+
+select
+
+#RAW_EVENT_ANALYSIS_COLUMNS($count $isgroup $type),
+
+#if(!((!$TECH_PACK_LIST.getTechPack($ApplicationConstants.EVENT_E_GSN_DTPDP_TPNAME)) && ("$!TECH_PACK_LIST.getTechPack($ApplicationConstants.EVENT_E_GSN_DTPDP_TPNAME)" == "")))
+    #set($dtpdpRawTables = $TECH_PACK_LIST.getTechPack($ApplicationConstants.EVENT_E_GSN_DTPDP_TPNAME).getRawTables())
+#else
+    #set($dtpdpRawTables = [])
+#end
+#if(${type}!=$TYPE_PTMSI&&${type}!=$ApplicationConstants.TYPE_MAN&&$dtpdpRawTables!=[]&&(($eventID.get(0)==${deactivateEventID})||((!$eventID) && ("$!eventID" == ""))))
+(case EVENT_ID_DESC when 'DEACTIVATE' THEN (case datavol.PDP_DURATION when null THEN null else str_replace(str(floor(datavol.PDP_DURATION/3600), 2), ' ', '0') + ':' + str_replace(str(floor(datavol.PDP_DURATION%3600/60), 2), ' ', '0') + ':' + str_replace(str(floor(datavol.PDP_DURATION%60), 2), ' ', '0') end ) else null end) as PDP_DURATION,
+(case EVENT_ID_DESC when 'DEACTIVATE' THEN datavol.DATAVOL_DL else null end) as DATAVOL_DL,
+(case EVENT_ID_DESC when 'DEACTIVATE' THEN datavol.AVG_USAGE_DL else null end) as AVG_USAGE_DL,
+(case EVENT_ID_DESC when 'DEACTIVATE' THEN datavol.PEAK_USAGE_DL else null end) as PEAK_USAGE_DL,
+(case EVENT_ID_DESC when 'DEACTIVATE' THEN datavol.DATAVOL_UL else null end) as DATAVOL_UL,
+(case EVENT_ID_DESC when 'DEACTIVATE' THEN datavol.AVG_USAGE_UL else null end) as AVG_USAGE_UL,
+(case EVENT_ID_DESC when 'DEACTIVATE' THEN datavol.PEAK_USAGE_UL else null end) as PEAK_USAGE_UL,
+(case EVENT_ID_DESC when 'DEACTIVATE' THEN datavol.QOS_HOP_UP else null end) as QOS_HOP_UP,
+(case EVENT_ID_DESC when 'DEACTIVATE' THEN datavol.QOS_HOP_DOWN else null end) as QOS_HOP_DOWN,
+(case EVENT_ID_DESC when 'DEACTIVATE' THEN datavol.CHARGING_ID else null end) as CHARGING_ID
+#else
+null as PDP_DURATION,
+null as DATAVOL_DL,
+null as AVG_USAGE_DL,
+null as PEAK_USAGE_DL,
+null as DATAVOL_UL,
+null as AVG_USAGE_UL,
+null as PEAK_USAGE_UL,
+null as QOS_HOP_UP,
+null as QOS_HOP_DOWN,
+null as CHARGING_ID
+#end
+from (
+#if($sgehTableList.size() > 0 && $useNonLteTables)
+    #EVENT_ANALYSIS_QUERY( $ApplicationConstants.SGEH $sgehTableList)
+#end
+#if($lteTableList.size() > 0 && $useLteTables)
+    #if($sgehTableList.size() > 0 && $useNonLteTables)
+    union all
+    #end
+    #EVENT_ANALYSIS_QUERY ($ApplicationConstants.LTE $lteTableList)
+#end
+)
+EVENT_ANALYSIS_RESULT
+#if(${type}!=$TYPE_PTMSI&&${type}!=$ApplicationConstants.TYPE_MAN&&${dtpdpRawTables}!=[]&&(($eventID.get(0)==${deactivateEventID})||((!$eventID) && ("$!eventID" == ""))))
+left outer join
+    #if(($itIsAGroup==true&&${rawType}==$TYPE_IMSI)||(!((!$rawType)&&("$!rawType"==""))&&(${rawType}!=$TYPE_IMSI&&${rawType}!=$TYPE_MSISDN)))
+        #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_SPECIFY_COLUMNS_2G3G_TP_ONLY($type $dtpdpRawTables "datavol" $columns $datavolcolumnsToSelectWithIMSI)
+    (DATAVOL_IMSI,DATAVOL_EVENT_TIME,DATAVOL_UL,DATAVOL_DL,AVG_USAGE_UL,AVG_USAGE_DL,PEAK_USAGE_UL,PEAK_USAGE_DL, QOS_HOP_UP, QOS_HOP_DOWN,PDP_DURATION,CHARGING_ID)
+    #else
+        #REPLACE_RAW_VIEW_WITH_RAW_TABLES_AND_FILTER_COLUMNS_SPECIFY_COLUMNS_2G3G_TP_ONLY($type $dtpdpRawTables "datavol" $columns $datavolcolumnsToSelect)
+    (DATAVOL_EVENT_TIME,DATAVOL_UL,DATAVOL_DL,AVG_USAGE_UL,AVG_USAGE_DL,PEAK_USAGE_UL,PEAK_USAGE_DL, QOS_HOP_UP, QOS_HOP_DOWN,PDP_DURATION,CHARGING_ID)
+    #end
+on (
+EVENT_ANALYSIS_RESULT.EVENT_TIME < dateadd(second, 20, DATAVOL_EVENT_TIME) AND
+EVENT_ANALYSIS_RESULT.EVENT_TIME > dateadd(second, -20, DATAVOL_EVENT_TIME)
+    #if(($itIsAGroup==true&&${rawType}==$TYPE_IMSI)||(!((!$rawType)&&("$!rawType"==""))&&(${rawType}!=$TYPE_IMSI&&${rawType}!=$TYPE_MSISDN)))
+    AND EVENT_ANALYSIS_RESULT.IMSI = DATAVOL_IMSI
+    #end
+)
+#end
+order by EVENT_ANALYSIS_RESULT.DATETIME_ID desc

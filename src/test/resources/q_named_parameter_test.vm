@@ -1,0 +1,10 @@
+##=============================================================================
+## named parameter test template
+##=============================================================================
+select
+	count(distinct(IMSI))
+from 
+	EVENT_E_SGEH_ERR_RAW
+where
+    #GET_DATETIME_RANGE()
+
